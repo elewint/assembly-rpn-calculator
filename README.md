@@ -33,5 +33,7 @@ the top of the stack and the label end_valstack points to the bottom of the valu
 ---
 
 Hours spent analyzing the assignment: 2
+
 Hours spent writing assembly code: 17
+
 Hours spent debugging the calculator: 8
