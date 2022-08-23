@@ -1,0 +1,461 @@
+# CONVENTIONS
+# r0 is always zero
+# r1 holds the return address and character input (convention from slides)
+# r2 holds a stack pointer to call stack
+# r3 holds a stack pointer to value stack
+# r4 is a nonvolatile used for basic operations
+# r5 is a volatile register used for basic operations
+# r6 and r7 are volatile temporary registers
+
+# set up registers
+.section init
+    .temps r6, r7
+    .zero r0
+
+# contains the jumptable
+.section rodata
+    jumptable:
+    .space 256
+
+# initialize the jump table
+.section init
+    .temps r6, r7
+    .zero r0
+    r5 := 0
+
+    # input: an uninitialized jump table
+    # output: an initialized jump table, each entry is set to input_error label
+    # purpose: set each entry of jumptable to input_error label
+    initialize_jumptable:
+        r4 := jumptable + r5
+        m[r0][r4] := input_error
+        r5 := r5 + 1
+        if (r5 <s 256) goto initialize_jumptable using r1
+    
+    # set r5 to 48 to jump to appropriate spot in jump table before 
+    # initialize_digits label
+    r5 := 48
+
+    # input: a jump table initialized with input_error labels
+    # output: a jump table initialized with input_error and digit labels
+    # purpose: set indices of digits 0 through 9 (in ASCII) to digit label
+    #          in jump table
+    initialize_digits:
+        # check for valid digits 0 - 9
+        r3 := jumptable + r5
+        m[r0][r3] := digit
+        r5 := r5 + 1
+        if (r5 <s 58) goto initialize_digits using r1
+
+    # input: a jump table initialized with digit and input_error labels
+    # output: a jump table initialized with operation, digit, and input_error
+    #         labels
+    # purpose: set appropriate indices of the jump table with corresponding
+    #          operation labels
+    jumptable_operations:
+        m[r0][jumptable + ' '] := waiting
+        m[r0][jumptable + '\n'] := newline
+        m[r0][jumptable + '+'] := add
+        m[r0][jumptable + '-'] := subtract
+        m[r0][jumptable + '*'] := multiply
+        m[r0][jumptable + '/'] := divide
+        m[r0][jumptable + '|'] := or
+        m[r0][jumptable + '&'] := and
+        m[r0][jumptable + 'c'] := neg
+        m[r0][jumptable + '~'] := comp
+        m[r0][jumptable + 's'] := swap
+        m[r0][jumptable + 'd'] := dup
+        m[r0][jumptable + 'p'] := pop_stack
+        m[r0][jumptable + 'z'] := zero_stack
+
+.section data
+    .space 10000
+    end_valstack:
+
+.section init
+    start_valstack:
+    r3 := end_valstack
+
+.section text
+    # input: an unknown ASCII value stored in r1
+    # output: prints to let the user know their character was not recognized
+    # purpose: prints a message to notify user about unknown character,
+    #          where r1 must hold an unrecognized ASCII value
+    input_error:
+        output "Unknown character '"
+        output r1
+        output "'\n"
+        goto waiting
+    
+    # input: an ASCII value (r1) representing a decimal digit
+    # output: the character as a digit, pushed to the value stack 
+    # purpose: to push the incoming character (r1) as a
+    #          digit (r5), to the value stack
+    digit:
+        r5 := r1 - 48
+        push r5 on stack r3         # push the digit to the value stack
+
+        goto entering
+    
+    # input: an ASCII value (r5) representing a decimal digit
+    # output: updates decimal number on value stack to reflect the
+    #         user-provided continuing digit of the multi-digit number
+    # purpose: allows user to input multi-digit decimal numbers, where at
+    #          least the first digit of the number is stored on the value
+    #          stack and r5 holds a continuing digit of the decimal number
+    continue_digit:
+        pop r4 off stack r3         # put previously-entered digits in r4
+        
+        r5 := r5 - 48
+        
+        r4 := r4 * 10 
+        r4 := r4 + r5
+        
+        push r4 on stack r3         # push multi-digit numeral to value stack
+        pop r4 off stack r2
+        goto entering
+
+    # input: none
+    # output: calls the print module
+    # purpose: initiates the print functionality
+    newline:
+        goto print linking r1
+       
+    # input: input from a standard input or a file (characters)
+    # output: redirects to a halt instruction should EOF be encountered ()
+    # purpose: acts as the initial calculator state, takes in input and
+    #          passes this input appropriately to the next label
+    waiting:
+        r1 := input()
+
+        push r4 on stack r2                 # save original r4 value
+        if (r1 == -1) goto stop using r4    # EOF has been input
+        pop r4 off stack r2                 # restore original r4 value
+
+    # input: an ASCII character stored in r1
+    # output: redirects flow to the appropriate spot in the jump table 
+    #         based on the nature of the character 
+    #         (digit, input_error, or jumptable operation)
+    # purpose: maps incoming characters to the appropriate jump table
+    #          label, and branches to the address of the label (r5)
+    waiting_with_character:
+        # branch indirect through jump table
+        r5 := jumptable + r1
+        r5 := m[r0][r5]
+        goto r5
+    
+    # input: none
+    # output: either continues a multi-digit decimal if the input is
+    #         a decimal number, or goes to appropriate label in the
+    #         jump table for operations or unknown characters
+    # purpose: reads input when the entry of a numeral is in progress,
+    #          allowing the entry of multi-digit decimals
+    entering:
+        r1 := input()
+        r5 := r1
+        
+        push r4 on stack r2                 # store original r4 value
+        if (r1 == -1) goto stop using r4    # EOF has been input
+        pop r4 off stack r2                 # restore original r4 value
+        
+        push r4 on stack r2                 # store original r4 value
+        r4 := jumptable + r1
+        r4 := m[r0][r4]
+        
+        if (r4 == digit) goto continue_digit using r1
+
+        # if input is not a digit, returns control to jump table
+        r1 := r5                           
+        r5 := r4
+        pop r4 off stack r2                # restore original r4 value
+        goto r5                            
+
+    # initiates the finite-state machine to the waiting state
+    main:
+        goto waiting
+
+    # restores previous r4 value from call stack and halts the program
+    stop:
+        pop r4 off stack r2
+        halt
+
+    ################################################################
+    ############################ OPERATIONS ########################
+    ################################################################
+
+    # input: at least two values (x and y) pushed to the value stack
+    # output: pops x and y from value stack, then pushes x + y to value stack
+    # purpose: performs addition on two elements and returns the calculator to
+    #          the waiting state
+    add:
+        # pop y from the value stack, then pop x from the value stack, 
+        # then push x + y
+
+        goto ensure_two_elements linking r1
+        push r4 on stack r2                 # save original r4 value
+
+        pop r4 off stack r3
+        pop r5 off stack r3
+
+        r5 := r5 + r4
+
+        push r5 on stack r3
+        pop r4 off stack r2                 # restore original r4 value
+        goto waiting
+
+    # input: at least two values (x and y) pushed to the value stack
+    # output: pops x and y from value stack, then pushes x * y to value stack
+    # purpose: performs mulitplication on two elements and returns the
+    #          calculator to the waiting state
+    multiply:
+        # pop y from the value stack, then pop x from the value stack, 
+        # then push x * y
+
+        goto ensure_two_elements linking r1
+        push r4 on stack r2         # save original r4 value
+
+        pop r4 off stack r3
+        pop r5 off stack r3
+
+        r5 := r5 * r4
+      
+        push r5 on stack r3
+        pop r4 off stack r2         # restore original r4 value
+        goto waiting
+    
+    # input: at least two values (x and y) pushed to the value stack
+    # output: pops x and y from value stack, then pushes x / y to value stack
+    # purpose: performs division on two elements and returns the calculator to
+    #          the waiting state
+    divide:
+        # pop y from the value stack, then pop x from the value stack, 
+        # then push x / y
+        
+        goto ensure_two_elements linking r1
+        push r4 on stack r2         # save original r4 value
+
+        pop r4 off stack r3
+        pop r5 off stack r3
+        
+        if (r4 == 0) goto divide_by_zero using r1
+        if (r5 <s 0) goto first_arg_negative using r1
+        if (r4 <s 0) goto second_arg_negative using r1
+        r5 := r5 / r4
+      
+        push r5 on stack r3
+        pop r4 off stack r2         # restore original r4 value
+        goto waiting
+
+        # computes division on x and y when x is negative
+        first_arg_negative:
+            if (r4 <s 0) goto both_negative using r1
+            r5 := r5 * -1
+            r5 := r5 / r4
+            r5 := r5 * -1
+            
+            push r5 on stack r3
+            pop r4 off stack r2      # restore original r4 value
+            goto waiting
+        
+        # computes division on x and y when y is negative
+        second_arg_negative:
+            r4 := r4 * -1
+            r5 := r5 / r4
+            r5 := r5 * -1
+            
+            push r5 on stack r3
+            pop r4 off stack r2      # restore original r4 value
+            goto waiting
+
+        # computes division on x and y when both are negative
+        both_negative:
+            r4 := r4 * -1
+            r5 := r5 * -1
+            push r5 on stack r3
+            push r4 on stack r3
+            pop r4 off stack r2     # restore original r4 value
+            goto divide
+
+        # since we cannot divide by y when y is zero, print an error
+        divide_by_zero:
+            push r5 on stack r3     # put values back on stack
+            push r4 on stack r3
+
+            pop r4 off stack r2     # restore original r4 value from stack
+            output "Division by zero\n"
+            goto waiting
+            
+    # input: at least two values (x and y) pushed to the value stack
+    # output: pops x and y from value stack, then pushes x - y to value stack
+    # purpose: performs subtraction on two elements and returns the 
+    #          calculator to the waiting state
+    subtract:
+        # pop y from the value stack, then pop x from the value stack, 
+        # then push x - y
+        
+        goto ensure_two_elements linking r1
+        push r4 on stack r2                 # save original r4 value
+
+        pop r4 off stack r3
+        pop r5 off stack r3
+        
+        r5 := r5 - r4
+        
+        push r5 on stack r3
+        pop r4 off stack r2                 # restore original r4 value
+        goto waiting
+
+    # input: at least two values (x and y) pushed to the value stack
+    # output: swaps x and y on the value stack
+    # purpose: swaps top two values on value stack and returns the 
+    #          calculator to the waiting state
+    swap:
+        # pop y from the value stack, then pop x from the value stack,
+        # then push y followed by x back onto value stack
+        
+        goto ensure_two_elements linking r1
+        push r4 on stack r2                 # save original r4 value
+
+        pop r4 off stack r3
+        pop r5 off stack r3
+        
+        push r4 on stack r3
+        push r5 on stack r3
+
+        pop r4 off stack r2                 # restore original r4 value
+        goto waiting
+
+    # input: at least one value pushed to the value stack
+    # output: pushes value at top of value to stack again (duplication)
+    # purpose: duplicates the value at the top of the value stack an returns
+    #          the calculator to the waiting state
+    dup:
+        goto ensure_one_element linking r1
+        pop r5 off stack r3
+        push r5 on stack r3
+        push r5 on stack r3
+        goto waiting
+
+    # input: at least one value pushed to the value stack
+    # output: pops top element off value stack
+    # purpose: pops the top element off the value stack and
+    #          returns the calculator to the waiting state
+    pop_stack:
+        goto ensure_one_element linking r1
+        pop stack r3
+        goto waiting
+    
+    # input: none
+    # output: pops all values from the value stack 
+    # purpose: empties the stack and returns the calculator to the waiting 
+    #          state 
+    zero_stack:
+        if (r3 == end_valstack) goto waiting using r1
+        pop stack r3
+        goto zero_stack
+
+    # input: at least one value pushed to the value stack
+    # output: pops the value, then pushes the negated version of the
+    #         value at the top of the value stack
+    # purpose: negates the value at the top of the value stack and returns the
+    #          calculator back to the waiting state
+    neg:
+        goto ensure_one_element linking r1
+        pop r5 off stack r3
+        r5 := r5 * -1
+        push r5 on stack r3
+        goto waiting
+
+    # input: at least two values (x and y) pushed to the value stack
+    # output: pops x and y from value stack, then pushes x & y onto
+    #         value stack
+    # purpose: performs bitwise and operation on top two elements and 
+    #          returns the calculator back to the waiting state
+    and:
+        # pop y from the value stack, then pop x from the value stack, 
+        # then push x & y
+
+        goto ensure_two_elements linking r1
+        push r4 on stack r2                 # save original r4 value
+
+        pop r4 off stack r3
+        pop r5 off stack r3
+
+        r5 := r5 & r4
+      
+        push r5 on stack r3
+        pop r4 off stack r2                 # restore original r4 value
+        goto waiting
+    
+    # input: at least two values pushed (x and y) to the value stack
+    # output: pops x and y from value stack, then pushes the result 
+    #         of the bitwise or of x and y to the value stack
+    # purpose: performs bitwise or on the top two values on the value stack 
+    #          and returns the calculator to the waiting state    
+    or:
+        # pop y from the value stack, then pop x from the value stack, 
+        # then push x | y
+
+        goto ensure_two_elements linking r1
+        push r4 on stack r2                 # save original r4 value
+
+        pop r4 off stack r3
+        pop r5 off stack r3
+
+        r5 := r5 | r4
+      
+        push r5 on stack r3
+        pop r4 off stack r2                 # restore original r4 value
+        goto waiting    
+        
+    # input: at least one value pushed to the value stack
+    # output: pops the top value from value stack, then pushes the bitwise
+    #         complement of that value onto value stack
+    # purpose: computes the bitwise complement of value on top of the value
+    #          stack and returns the calculator back to the waiting state
+    comp:
+        goto ensure_one_element linking r1
+        pop r5 off stack r3
+        r5 := ~r5
+        push r5 on stack r3
+        goto waiting
+    
+    # input: none
+    # output: if there is no value on the value stack, ouputs stack underflow. 
+    #         otherwise, returns the flow back to the address at r5
+    # purpose: ensures that there exists at least one element on the value
+    #          stack and restores program flow accordingly
+    ensure_one_element:
+        r5 := r1
+        if (r3 != end_valstack) goto r5 using r1
+        output "Stack underflow---expected at least 1 element\n"
+        goto waiting
+
+    # input: none
+    # output: if there is less than two values on the value stack, 
+    #         ouputs stack underflow. 
+    #         otherwise, returns the flow back to the address at r5
+    # purpose: ensures that there exists at least two elements on the value
+    #          stack
+    ensure_two_elements:
+        r5 := 0
+        push r4 on stack r2         # Save original r4 value
+        r4 := r1
+        push r4 on stack r2         # Save return address
+
+        # uses a loop to count the elements on the stack; calls success
+        # if there are at least two elements, otherwise prints stack underflow
+        count_loop:
+            if (r5 == 2) goto success using r1
+            r4 := r5 + r3
+            r5 := r5 + 1
+            if (r4 != end_valstack) goto count_loop using r1
+            output "Stack underflow---expected at least 2 elements\n"
+            pop stack r2            # Pop return address off call stack
+            pop r4 off stack r2     # Restore original r4 value
+            goto waiting
+        
+        success:
+            pop r5 off stack r2     # Store return address in r5
+            pop r4 off stack r2     # Restore original r4 value
+            goto r5

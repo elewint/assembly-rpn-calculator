@@ -1,0 +1,115 @@
+# CONVENTIONS
+# r0 is always zero
+# r1 holds the return address
+# r2 holds a stack pointer to call stack
+# r3 holds a stack pointer to value stack
+# r4 is a nonvolatile used for basic operations
+# r5 is a volatile register used for basic operations
+# r6 and r7 are volatile temporary registers
+
+.section init
+    .temps r6, r7
+    .zero r0
+
+.section text
+    # input: none
+    # output: outputs the contents of the value stack 
+    # purpose: prints the entire value stack in the appropriate order and 
+    #          formatting
+    print:
+        # determine which case the value at the top of the value stack
+        # falls into, print value accordingly, and pop it.
+        
+        # set r5 to hold the value stack
+        r5 := r3
+
+        # input: r5 must point to the top of the value stack
+        # output: loops through each value of the value stack, redirecting
+        #         to the appropriate label based on the nature of 
+        #         the value to print the value
+        # purpose: prints the values on the value stack
+        print_loop:
+            if (r5 == end_valstack) goto waiting using r1
+            push r4 on stack r2         # save the original value of r4
+
+            r4 := m[r0][r5]
+            output ">>> "
+
+            push r5 on stack r2
+            if (r4 == 0) goto zero using r1
+            if (r4 <s 0) goto negative using r1
+            if (r4 <s 10) goto single_digit using r1
+            if (r4 >s 9) goto positive using r1
+        
+        # iterates through loop by incrementing r5
+        increment:
+            pop r5 off stack r2
+            output "\n"
+            r5 := r5 + 1
+            pop r4 off stack r2         # restores the original r4 value
+            goto print_loop
+
+    # input: the single-digit, positive, non-zero decimal stored in r4
+    # output: the number, in decimal, stored in r4
+    # purpose: prints a single digit and returns to the print loop
+    single_digit:
+        output r4 + 48
+        goto increment
+
+    # input: none
+    # output: zero
+    # purpose: prints zero and returns to the print loop
+    zero:
+        output "0"
+        goto increment
+
+    # input: r4 holds a multi-digit, positive, non-zero decimal number
+    # output: prints the number stored in r4
+    # purpose: prints a multi-digit, positive decimal number
+    positive:
+        # set r5 to the value stored in r4
+        r5 := r4
+
+        # save the address to return to at the end of the recursion
+        push increment on stack r2   
+
+        push r5 on stack r2     # push original value onto callstack
+
+        r1 := finish_iteration
+
+        # recursively loops through the multi-digit numeral, pushing the
+        # most significant n - 1 digits to the call stack, then pushing the
+        # least significant digit
+        positive_loop:
+            push r1 on stack r2     # push return address
+
+            r5 := r5 / 10
+            push r5 on stack r2     # push most significant n - 1 digits
+
+            # if current digit is less than 10, end this iteration
+            if (r5 <s 10) goto finish_iteration using r1
+            
+            # otherwise make recursive call, storing return address in r1
+            goto positive_loop linking r1
+            
+        # prints least significant digit and returns to
+        # function that called this recursive step
+        finish_iteration:          
+            pop r5 off stack r2     # pop parameter
+
+            # print least significant decimal digit
+            r5 := r5 mod 10
+            output r5 + 48
+            
+            pop r5 off stack r2     # Pop return address
+            goto r5
+
+    # input: the non-zero negative decimal stored in r4
+    # output: prints the number stored in r4
+    # purpose: prints a negative sign in front of the negative number to be
+    #          printed
+    negative:
+        output '-'
+        r4 := r4 * -1
+        if (r4 <s 10) goto single_digit using r1
+        if (r4 >s 9) goto positive using r1

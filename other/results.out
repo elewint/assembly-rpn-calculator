@@ -1,0 +1,11 @@
+FAILED on input ~960dds2c d+d-  p  dc  371d533cc799s995c694p212c /555c 212c+ d+d* cd-d dpcpdd &*s| 760c~  *494c
+--- /tmp/tmp.IYzfZrI2VZ	2021-12-14 14:21:04.852554965 -0500
++++ /tmp/tmp.VcvAhiSoCc	2021-12-14 14:21:04.858555178 -0500
+@@ -1,6 +1,6 @@
+ Stack underflow---expected at least 1 element
+ >>> -494
+->>> 3036
++>>> 0
+ >>> 533
+ >>> 799
+ >>> 371
