@@ -24,11 +24,11 @@ The value stack is a stack with space for one million entries, where r3 points t
 the top of the stack and the label end_valstack points to the bottom of the value stack.
 
 ## Sections created across .ums files:
-`.section init` - Contains setup code, including code to set up the stack, code to initialize
+- `.section init` - Contains setup code, including code to set up the stack, code to initialize
 				jump tables, and code to call main when setup is complete.
-`.section rodata` - Contains jump tables.
-`.section data` - Contains a preallocated call stack and value stack.
-`.section text` - Contains procedure definitions, including the definition of main.
+- `.section rodata` - Contains jump tables.
+- `.section data` - Contains a preallocated call stack and value stack.
+- `.section text` - Contains procedure definitions, including the definition of main.
 
 ---
 
